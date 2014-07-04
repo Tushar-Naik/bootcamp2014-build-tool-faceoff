@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<!DOCTYPE project [
+        <!ENTITY manifest SYSTEM "misc/manifest.xml">
+        <!ENTITY extension-name SYSTEM "misc/extension-name.xml">
+]>
+<project xmlns:ivy="antlib:org.apache.ivy.ant" name="contrast" basedir="." default="show_charges">
+  <macrodef name="sh">
+    <attribute name="cmd"/>
+    <sequential>
+      <exec executable="/bin/bash">
+        <arg value="-c"/>
+        <arg value="@{cmd}"/>
+      </exec>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="up-to-date">
+    <attribute name="dest"/>
+    <attribute name="src"/>
+    <sequential>
+      <uptodate property="@{target_file}.required" srcfile="@{src_file}" targetfile="@{target_file}"/>
+    </sequential>
+  </macrodef>
+
+  <target name="show_charges" depends="per_person_charges,
+                                       per_team_charges"/>
+
+  <target name="check.person_bags.data.tmp">
+     <up-to-date src="person_bags" dest="person_bags.data.tmp"/>
+  </target>
+  <target name="person_bags.data.tmp" depends="check.person_bags.data.tmp" unless="person_bags.data.tmp.required">
+    <sh cmd="tail -n +2 person_bags | sed -e 's/ \+/ /g' > person_bags.data.tmp"/>
+  </target>
+
+
+  <target name="check.bag_person.data.tmp">
+     <up-to-date src="person_bags.data.tmp" dest="bag_person.data.tmp"/>
+  </target>
+  <target name="bag_person.data.tmp" depends="check.bag_person.data.tmp,
+                                              person_bags.data.tmp" unless="bag_person.data.tmp.required">
+    <sh cmd="cat person_bags.data.tmp | awk '{print $2&quot; &quot;$1}' | sort > bag_person.data.tmp"/>
+  </target>
+
+  <target name="check.bag_team.data.tmp">
+     <up-to-date src="person_bags.data.tmp" dest="bag_team.data.tmp"/>
+  </target>
+  <target name="bag_team.data.tmp" depends="check.bag_team.data.tmp,
+                                            person_bags.data.tmp" unless="bag_team.data.tmp.required">
+    <sh cmd="cat person_bags.data.tmp | awk '{print $2&quot; &quot;$3}' | sort > bag_team.data.tmp"/>
+  </target>
+
+  <target name="check.$dest">
+     <up-to-date src="$src" dest="$dest"/>
+  </target>
+  <target name="$dest" depends="check.$dest" unless="$dest.required">
+    <sh cmd=" | sort > $dest"/>
+  </target>
+
+  <target name="check.baggage_charges.data.tmp">
+     <up-to-date src="baggage_charges" dest="baggage_charges.data.tmp"/>
+  </target>
+  <target name="baggage_charges.data.tmp" depends="check.baggage_charges.data.tmp" unless="baggage_charges.data.tmp.required">
+    <sh cmd="tail -n +2 baggage_charges > baggage_charges.data.tmp"/>
+  </target>
+
+  <target name="check.per_person_charges.data.tmp">
+    <uptodate property="per_person_charges.data.tmp.required" targetfile="per_person_charges.data.tmp">
+      <srcfiles dir="." includes="bag_person.data.tmp"/>
+      <srcfiles dir="." includes="baggage_charges.data.tmp"/>
+    </uptodate>
+  </target>
+  <target name="per_person_charges.data.tmp" depends="check.per_person_charges.data.tmp,
+                                                      bag_person.data.tmp,
+                                                      baggage_charges.data.tmp" unless="per_person_charges.data.tmp.required">
+    <sh cmd="join -j 1 bag_person.data.tmp baggage_charges.data.tmp | awk '{print $2&quot; &quot;$3}' > per_person_charges.data.tmp"/>
+  </target>
+
+  <target name="check.per_team_charges.data.tmp">
+    <uptodate property="per_team_charges.data.tmp.required" targetfile="per_team_charges.data.tmp">
+      <srcfiles dir="." includes="bag_team.data.tmp"/>
+      <srcfiles dir="." includes="baggage_charges.data.tmp"/>
+    </uptodate>
+  </target>
+  <target name="per_team_charges.data.tmp" depends="check.per_team_charges.data.tmp,
+                                                    bag_team.data.tmp,
+                                                    baggage_charges.data.tmp" unless="per_team_charges.data.tmp.required">
+    <sh cmd=" join -j 1 bag_team.data.tmp baggage_charges.data.tmp | awk '{print $2&quot; &quot;$3}' | sort | awk '{ if ($1 == last) { sum += $2 } else { if (last) { print last&quot; &quot;sum }; sum = 0; last = $1; }} END {print last&quot; &quot;sum }' > per_team_charges.data.tmp"/>
+  </target>
+
+  <target name="per_person_charges" depends="per_person_charges.data.tmp">
+    <sh cmd="cat per_person_charges.data.tmp"/>
+  </target>
+
+  <target name="per_team_charges" depends="per_team_charges.data.tmp">
+    <sh cmd="cat per_team_charges.data.tmp"/>
+  </target>
+
+  <target name="clean">
+    <delete>
+      <fileset dir="." includes="*.tmp"/>
+    </delete>
+  </target>
+</project>
